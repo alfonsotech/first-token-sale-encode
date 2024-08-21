@@ -47,6 +47,15 @@ async function main() {
       parseEther("2"),
     ]);
     await publicClient.waitForTransactionReceipt({ hash: tx });
+
+    //View balances
+    const myBalance = await tokenContract.read.balanceOf([deployer.account.address])
+    console.log(`My balance is ${formatEther(myBalance)} ${symbol}`);
+     const account1Balance = await tokenContract.read.balanceOf([account1.account.address])
+    console.log(`account1Balance is ${formatEther(account1Balance)}`);
+     const account2Balance = await tokenContract.read.balanceOf([account2.account.address])
+    console.log(`account2Balance is ${formatEther(account2Balance)}`);
+    
 }
 
 main().catch((err) => {

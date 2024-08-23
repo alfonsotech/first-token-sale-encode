@@ -8,6 +8,7 @@ const TEST_RATIO = 100n;
 const TEST_PRICE = 10n;
 const TEST_PURCHASE_SIZE = parseEther("1");
 const MINTER_ROLE = "0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6"
+const TEST_RETURN_TOKENS_SIZE = parseEther("50");
 
 async function deployContractFixture() {
   const publicClient = await viem.getPublicClient();
@@ -61,7 +62,7 @@ describe("NFT Shop", async () => {
     });
   })
   describe("When a user buys an ERC20 from the Token contract", async () => {  
-    it.only("charges the correct amount of ETH", async () => {
+    it("charges the correct amount of ETH", async () => {
       const {publicClient, tokenSaleContract, myTokenContract, otherAccount} = await loadFixture(deployContractFixture)
       const ethBalanceBefore = await publicClient.getBalance({address: otherAccount.account.address}); 
 
@@ -106,8 +107,40 @@ describe("NFT Shop", async () => {
     it("gives the correct amount of ETH", async () => {
       throw new Error("Not implemented");
     })
-    it("burns the correct amount of tokens", async () => {
-      throw new Error("Not implemented");
+    it.only("burns the correct amount of tokens", async () => {
+      const {publicClient, tokenSaleContract, myTokenContract, otherAccount} = await loadFixture(deployContractFixture)
+   
+
+      //Buy Tokens
+     const buyTokensTx = await tokenSaleContract.write.buyTokens({value: TEST_PURCHASE_SIZE, account: otherAccount.account,}); 
+
+      //Get Receipt
+      const receipt = await publicClient.getTransactionReceipt({hash: buyTokensTx})
+      if(!receipt.status || receipt.status !== "success") {
+        throw new Error("Transaction failed");
+      }
+
+      const tokenBalanceBefore = await myTokenContract.read.balanceOf([otherAccount.account.address,]); 
+
+      //Approve Tx
+      const approveTokensTx = await myTokenContract.write.approve([tokenSaleContract.address, TEST_RETURN_TOKENS_SIZE], {account: otherAccount.account})
+      const approveTokensTxReceipt = await publicClient.getTransactionReceipt({hash: approveTokensTx, })
+      if(!approveTokensTxReceipt.status || approveTokensTxReceipt.status !== "success") {
+        throw new Error("Transaction failed");
+      }
+
+      //Burn - return tokens
+      const returnTokensTx = await tokenSaleContract.write.returnTokens([TEST_RETURN_TOKENS_SIZE, ], { account: otherAccount.account })
+      const returnTokensTxReceipt = await publicClient.getTransactionReceipt({hash: returnTokensTx, })
+      if(!returnTokensTxReceipt.status || returnTokensTxReceipt.status !== "success") {
+        throw new Error("Transaction failed");
+      }
+
+      const tokenBalanceAfter = await myTokenContract.read.balanceOf([otherAccount.account.address,]);
+      //TEST_RETURN_TOKENS_SIZE
+      const diff = tokenBalanceBefore - tokenBalanceAfter;
+      expect(diff).to.equal(TEST_RETURN_TOKENS_SIZE);
+
     });
   })
   describe("When a user buys an NFT from the Shop contract", async () => {

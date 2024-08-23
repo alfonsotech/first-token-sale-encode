@@ -37,4 +37,11 @@ contract TokenSale is Ownable, AccessControl {
         );
         paymentToken.mint(msg.sender, amountToMint);
     }
+
+    function returnTokens(uint256 amount) external {
+        paymentToken.burnFrom(msg.sender, amount);
+        //Give back eth
+        payable(msg.sender).transfer(amount / ratio);
+        //Take tokens inside
+    }
 }

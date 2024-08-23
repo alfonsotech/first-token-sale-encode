@@ -1,51 +1,105 @@
 import {expect} from "chai";
 import {viem} from "hardhat";
+import { parseEther, formatEther} from "viem";
+import { loadFixture } from "@nomicfoundation/hardhat-toolbox-viem/network-helpers";
 // import { TokenSale } from './../artifacts/contracts/TokenSale.sol/TokenSale';
 
 const TEST_RATIO = 100n;
-const TEST_PRICE = 1n;
+const TEST_PRICE = 10n;
+const TEST_PURCHASE_SIZE = parseEther("1");
+const MINTER_ROLE = "0x9f2df0fed2c77648de5860a4cc508cd0818c85b8b8a1ab4ceeef8d981c8956a6"
 
 async function deployContractFixture() {
-const publicClient = await viem.getPublicClient();
-const [owner, otherAccount] = await viem.getWalletClients();
-const tokenSaleContract = await viem.deployContract("TokenSale", [
-TEST_RATIO, TEST_PRICE
-]);
-return {
-publicClient,
-owner,
-otherAccount,
-tokenSaleContract,
-};
+  const publicClient = await viem.getPublicClient();
+  const [owner, otherAccount] = await viem.getWalletClients();
+  
+  const myTokenContract = await viem.deployContract("MyToken", []);
+  const myNFTContract = await viem.deployContract("MyNFT", []);
+   const tokenSaleContract = await viem.deployContract("TokenSale", [
+    TEST_RATIO,
+    TEST_PRICE,
+    myTokenContract.address,
+    myNFTContract.address
+  ]);
+  // const giveMinterRoleTokenTx = await myTokenContract.write.grantRole([await myTokenContract.read.MINTER_ROLE(), tokenSaleContract.address]);
+  //hard code minter role from error message, since it's always the same
+   const giveMinterRoleTokenTx = await myTokenContract.write.grantRole([MINTER_ROLE, tokenSaleContract.address]);
+  //is transaction receipt here necessary or optional?
+  await publicClient.waitForTransactionReceipt({hash: giveMinterRoleTokenTx})
+  return {
+    publicClient,
+    owner,
+    otherAccount,
+    tokenSaleContract,
+    myTokenContract,
+    myNFTContract
+  };
+  
 }
-
 describe("NFT Shop", async () => {
+
+
   describe("When the Shop contract is deployed", async () => {
     it("defines the ratio as provided in parameters", async () => {
-        const tokenSaleContract = await viem.deployContract("TokenSale", [TEST_RATIO,]);
+      const {tokenSaleContract} = await loadFixture(deployContractFixture)
+        // const tokenSaleContract = await viem.deployContract("TokenSale", [TEST_RATIO,]);
         const ratio = await tokenSaleContract.read.ratio();
         expect(ratio).to.equal(TEST_RATIO);
     })
-    it.only("defines the price as provided in parameters", async () => {
-      const tokenSaleContract = await viem.deployContract("TokenSale", [TEST_PRICE, ]);
-      const price = await tokenSaleContract.read.getPrice();
+    it("defines the price as provided in parameters", async () => {
+      const {tokenSaleContract} = await loadFixture(deployContractFixture)
+      // const tokenSaleContract = await viem.deployContract("TokenSale", [TEST_RATIO, TEST_PRICE, ]);
+      const price = await tokenSaleContract.read.price();
       expect(price).to.equal(TEST_PRICE);
-
-      // throw new Error("Not implemented");
     });
     it("uses a valid ERC20 as payment token", async () => {
-      throw new Error("Not implemented");
+      //  const {tokenSaleContract} = await loadFixture(deployContractFixture)
+     throw new Error("Not implemented");
     });
     it("uses a valid ERC721 as NFT collection", async () => {
       throw new Error("Not implemented");
     });
   })
   describe("When a user buys an ERC20 from the Token contract", async () => {  
-    it("charges the correct amount of ETH", async () => {
-      throw new Error("Not implemented");
+    it.only("charges the correct amount of ETH", async () => {
+      const {publicClient, tokenSaleContract, myTokenContract, otherAccount} = await loadFixture(deployContractFixture)
+      const ethBalanceBefore = await publicClient.getBalance({address: otherAccount.account.address}); 
+
+      //Buy Tokens
+     const buyTokensTx = await tokenSaleContract.write.buyTokens({value: TEST_PURCHASE_SIZE, account: otherAccount.account,}); 
+
+      //Get Receipt
+      const receipt = await publicClient.getTransactionReceipt({hash: buyTokensTx})
+      if(!receipt.status || receipt.status !== "success") {
+        throw new Error("Transaction failed");
+      }
+      const gasUsed = receipt.gasUsed;
+      const gasPrice = receipt.effectiveGasPrice;
+      const txCost = gasUsed * gasPrice;
+
+      const ethBalanceAfter = await publicClient.getBalance({address: otherAccount.account.address});
+    
+      const diff = ethBalanceBefore - ethBalanceAfter - txCost;
+      
+      expect(diff).to.equal(TEST_PURCHASE_SIZE);
     })
     it("gives the correct amount of tokens", async () => {
-      throw new Error("Not implemented");
+      const {publicClient, tokenSaleContract, myTokenContract, otherAccount} = await loadFixture(deployContractFixture)
+      const tokenBalanceBefore = await myTokenContract.read.balanceOf([otherAccount.account.address,]); 
+
+      //Buy Tokens
+     const buyTokensTx = await tokenSaleContract.write.buyTokens({value: TEST_PURCHASE_SIZE, account: otherAccount.account,}); 
+
+      //Get Receipt
+      const receipt = await publicClient.getTransactionReceipt({hash: buyTokensTx})
+      if(!receipt.status || receipt.status !== "success") {
+        throw new Error("Transaction failed");
+      }
+
+      const tokenBalanceAfter = await myTokenContract.read.balanceOf([otherAccount.account.address,]);
+    
+      const diff = tokenBalanceAfter - tokenBalanceBefore;
+      expect(diff).to.equal(TEST_PURCHASE_SIZE * TEST_RATIO);
     });
   })
   describe("When a user burns an ERC20 at the Shop contract", async () => {
